@@ -1102,6 +1102,10 @@ export async function runHeartbeatOnce(opts: {
   const dueCommitmentIds = hasDueCommitments
     ? preflight.dueCommitments.map((commitment) => commitment.id)
     : [];
+  const shouldRunCommitmentsAfterTaskTurn =
+    dueHeartbeatTasks.length > 0 &&
+    preflight.dueCommitments.length > 0 &&
+    canHeartbeatDeliverCommitments(heartbeat);
 
   // If no tasks are due, skip heartbeat entirely
   if (prompt === null) {
@@ -1219,6 +1223,24 @@ export async function runHeartbeatOnce(opts: {
       return;
     }
     consumeSystemEventEntries(sessionKey, preflight.pendingEventEntries);
+  };
+  const runCommitmentsAfterTaskTurn = async (): Promise<HeartbeatRunResult | undefined> => {
+    if (!shouldRunCommitmentsAfterTaskTurn) {
+      return undefined;
+    }
+    const commitmentResult = await runHeartbeatOnce({
+      cfg,
+      agentId,
+      heartbeat,
+      reason: "commitment",
+      sessionKey,
+      deps: opts.deps,
+    });
+    return commitmentResult.status === "failed" ? commitmentResult : undefined;
+  };
+  const finishRanHeartbeatTurn = async (): Promise<HeartbeatRunResult> => {
+    const commitmentResult = await runCommitmentsAfterTaskTurn();
+    return commitmentResult ?? { status: "ran", durationMs: Date.now() - startedAt };
   };
 
   const ctx = {
@@ -1375,7 +1397,7 @@ export async function runHeartbeatOnce(opts: {
       });
       await updateTaskTimestamps();
       consumeInspectedSystemEvents();
-      return { status: "ran", durationMs: Date.now() - startedAt };
+      return await finishRanHeartbeatTurn();
     }
 
     const ackMaxChars = resolveHeartbeatAckMaxChars(cfg, heartbeat);
@@ -1420,7 +1442,7 @@ export async function runHeartbeatOnce(opts: {
       });
       await updateTaskTimestamps();
       consumeInspectedSystemEvents();
-      return { status: "ran", durationMs: Date.now() - startedAt };
+      return await finishRanHeartbeatTurn();
     }
 
     const mediaUrls = resolveSendableOutboundReplyParts(replyPayload).mediaUrls;
@@ -1463,7 +1485,7 @@ export async function runHeartbeatOnce(opts: {
       });
       await updateTaskTimestamps();
       consumeInspectedSystemEvents();
-      return { status: "ran", durationMs: Date.now() - startedAt };
+      return await finishRanHeartbeatTurn();
     }
 
     // Reasoning payloads are text-only; any attachments stay on the main reply.
@@ -1485,7 +1507,7 @@ export async function runHeartbeatOnce(opts: {
       });
       await updateTaskTimestamps();
       consumeInspectedSystemEvents();
-      return { status: "ran", durationMs: Date.now() - startedAt };
+      return await finishRanHeartbeatTurn();
     }
 
     if (!visibility.showAlerts) {
@@ -1506,7 +1528,7 @@ export async function runHeartbeatOnce(opts: {
         indicatorType: visibility.useIndicator ? resolveIndicatorType("sent") : undefined,
       });
       consumeInspectedSystemEvents();
-      return { status: "ran", durationMs: Date.now() - startedAt };
+      return await finishRanHeartbeatTurn();
     }
 
     const deliveryAccountId = delivery.accountId;
@@ -1588,7 +1610,7 @@ export async function runHeartbeatOnce(opts: {
     });
     await updateTaskTimestamps();
     consumeInspectedSystemEvents();
-    return { status: "ran", durationMs: Date.now() - startedAt };
+    return await finishRanHeartbeatTurn();
   } catch (err) {
     const reason = formatErrorMessage(err);
     emitHeartbeatEvent({
