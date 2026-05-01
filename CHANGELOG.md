@@ -11,6 +11,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Providers/plugins: load the owning provider plugin for manifest model-catalog aliases such as Azure OpenAI Responses and avoid caching nested in-flight hook-resolution misses, so provider hooks recover after targeted plugin activation completes. Thanks @obviyus.
 - Agents/pi-embedded-runner: extract the `abortable` provider-call wrapper from `runEmbeddedAttempt` to module scope so its promise handlers no longer close over the run lexical context, releasing transcripts, tool buffers, and subscription callbacks when a provider call hangs past abort. (#74182) Thanks @cjboy007.
 - Docker: restore `python3` in the gateway runtime image after the slim-runtime switch. Fixes #75041.
 - CLI/Voice Call: scope `voicecall` command activation to the Voice Call plugin so setup and smoke checks no longer broad-load unrelated plugin runtimes or hang after printing JSON. Thanks @vincentkoc.
